@@ -3,7 +3,9 @@ package controllers
 import (
 	"fmt"
 	"garment-management-backend/internal/healthcare/models"
+	"math"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -13,27 +15,64 @@ type PatientController struct {
 	DB *gorm.DB
 }
 
-// Index handles GET /api/v1/healthcare/patients
+// Index handles GET /api/v1/patients  (also /api/v1/healthcare/patients)
+// Query params: search, gender, blood_group, page, per_page
 func (ctrl *PatientController) Index(c *gin.Context) {
-	var patients []models.Patient
+	db := ctrl.DB.Model(&models.Patient{})
 
-	db := ctrl.DB
-	if query := c.Query("query"); query != "" {
-		like := "%" + query + "%"
-		db = db.Where("full_name ILIKE ? OR contact_info ILIKE ?", like, like)
+	// Accept both "search" and legacy "query" param
+	if s := c.Query("search"); s != "" {
+		like := "%" + s + "%"
+		db = db.Where("full_name LIKE ? OR contact_info LIKE ?", like, like)
+	} else if q := c.Query("query"); q != "" {
+		like := "%" + q + "%"
+		db = db.Where("full_name LIKE ? OR contact_info LIKE ?", like, like)
 	}
+
 	if gender := c.Query("gender"); gender != "" {
 		db = db.Where("gender = ?", gender)
 	}
 
-	if err := db.Find(&patients).Error; err != nil {
+	if bg := c.Query("blood_group"); bg != "" {
+		db = db.Where("blood_group = ?", bg)
+	}
+
+	// Pagination defaults
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "15"))
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 15
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count patients"})
+		return
+	}
+
+	var patients []models.Patient
+	offset := (page - 1) * perPage
+	if err := db.Offset(offset).Limit(perPage).Find(&patients).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch patients"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": patients})
+
+	lastPage := int(math.Ceil(float64(total) / float64(perPage)))
+	c.JSON(http.StatusOK, gin.H{
+		"data": patients,
+		"meta": gin.H{
+			"total":     total,
+			"page":      page,
+			"per_page":  perPage,
+			"last_page": lastPage,
+		},
+	})
 }
 
-// Store handles POST /api/v1/healthcare/patients
+// Store handles POST /api/v1/patients
 func (ctrl *PatientController) Store(c *gin.Context) {
 	var req struct {
 		FullName    string `json:"full_name" binding:"required"`
@@ -62,7 +101,8 @@ func (ctrl *PatientController) Store(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "Patient created successfully", "data": patient})
 }
 
-// Get handles GET /api/v1/healthcare/patients/:id
+// Get handles GET /api/v1/patients/:id
+// Returns patient + preloaded EHR snapshot
 func (ctrl *PatientController) Get(c *gin.Context) {
 	id := c.Param("id")
 	var patient models.Patient
@@ -74,7 +114,7 @@ func (ctrl *PatientController) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": patient})
 }
 
-// Update handles PUT /api/v1/healthcare/patients/:id
+// Update handles PUT /api/v1/patients/:id
 func (ctrl *PatientController) Update(c *gin.Context) {
 	id := c.Param("id")
 	var patient models.Patient
@@ -108,7 +148,7 @@ func (ctrl *PatientController) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Patient updated successfully", "data": patient})
 }
 
-// Destroy handles DELETE /api/v1/healthcare/patients/:id
+// Destroy handles DELETE /api/v1/patients/:id  (GORM soft-delete)
 func (ctrl *PatientController) Destroy(c *gin.Context) {
 	id := c.Param("id")
 	if err := ctrl.DB.Delete(&models.Patient{}, id).Error; err != nil {
@@ -118,7 +158,7 @@ func (ctrl *PatientController) Destroy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Patient deleted successfully"})
 }
 
-// GenerateID handles GET /api/v1/healthcare/patients/generate-id
+// GenerateID handles GET /api/v1/patients/generate-id
 func (ctrl *PatientController) GenerateID(c *gin.Context) {
 	var count int64
 	ctrl.DB.Model(&models.Patient{}).Count(&count)
