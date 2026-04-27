@@ -38,7 +38,7 @@ type FieldError = Partial<PatientForm>;
 function validate(f: PatientForm): FieldError {
   const e: FieldError = {};
   if (!f.full_name.trim()) e.full_name = "Full name is required";
-  if (!f.dob) e.dob = "Date of birth is required";
+  // if (!f.dob) e.dob = "Date of birth is required";
   if (!f.gender) e.gender = "Gender is required";
   if (!f.blood_group) e.blood_group = "Blood group is required";
   if (!f.contact_phone.trim()) e.contact_phone = "Phone number is required";

@@ -247,19 +247,19 @@ export default function PatientList() {
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 flex items-center justify-center font-bold text-sm border border-brand-100 dark:border-brand-500/20 shrink-0">
-                          {p.full_name
+                          {(p.full_name ?? "")
                             .split(" ")
                             .slice(0, 2)
-                            .map((n) => n[0])
+                            .map((n) => n[0] ?? "")
                             .join("")
-                            .toUpperCase()}
+                            .toUpperCase() || "?"}
                         </div>
                         <div>
                           <p className="font-bold text-gray-900 dark:text-white text-sm">
                             {p.full_name}
                           </p>
                           <p className="text-[11px] text-gray-400 uppercase tracking-tight font-mono">
-                            #{p.id.slice(0, 8).toUpperCase()}
+                            #{(p.id ?? "").slice(0, 8).toUpperCase()}
                           </p>
                         </div>
                       </div>
