@@ -90,6 +90,49 @@ func (ctrl *AdmissionController) Discharge(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Patient discharged successfully"})
 }
 
+// Update handles PUT /api/v1/ipd/admissions/:id
+// Allows updating admission details such as doctor, bed, diagnosis notes.
+func (ctrl *AdmissionController) Update(c *gin.Context) {
+	id := c.Param("id")
+	var admission models.Admission
+	if err := ctrl.DB.First(&admission, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Admission not found"})
+		return
+	}
+
+	var req struct {
+		AdmissionDate     string `json:"admission_date"`
+		DischargeDate     string `json:"discharge_date"`
+		DischargeSummary  string `json:"discharge_summary"`
+		AdmittingDoctorID *uint  `json:"admitting_doctor_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if req.AdmissionDate != "" {
+		updates["admission_date"] = req.AdmissionDate
+	}
+	if req.DischargeDate != "" {
+		updates["discharge_date"] = req.DischargeDate
+	}
+	if req.DischargeSummary != "" {
+		updates["discharge_summary"] = req.DischargeSummary
+	}
+	if req.AdmittingDoctorID != nil {
+		updates["admitting_doctor_id"] = req.AdmittingDoctorID
+	}
+
+	if err := ctrl.DB.Model(&admission).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update admission"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Admission updated", "data": admission})
+}
+
+
 // AllocateWard handles POST /api/v1/healthcare/admissions/:id/ward
 func (ctrl *AdmissionController) AllocateWard(c *gin.Context) {
 	id := c.Param("id")

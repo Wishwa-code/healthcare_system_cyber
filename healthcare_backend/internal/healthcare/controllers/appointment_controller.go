@@ -12,7 +12,7 @@ type AppointmentController struct {
 	DB *gorm.DB
 }
 
-// Index handles GET /api/v1/healthcare/appointments
+// Index handles GET /api/v1/appointments
 func (ctrl *AppointmentController) Index(c *gin.Context) {
 	var appointments []models.Appointment
 	db := ctrl.DB.Preload("Patient").Preload("Doctor")
@@ -26,8 +26,11 @@ func (ctrl *AppointmentController) Index(c *gin.Context) {
 	if status := c.Query("status"); status != "" {
 		db = db.Where("status = ?", status)
 	}
+	if date := c.Query("date"); date != "" {
+		db = db.Where("scheduled_time LIKE ?", date+"%")
+	}
 
-	if err := db.Find(&appointments).Error; err != nil {
+	if err := db.Order("scheduled_time ASC").Find(&appointments).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch appointments"})
 		return
 	}
@@ -92,7 +95,7 @@ func (ctrl *AppointmentController) UpdateStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Appointment status updated"})
 }
 
-// Destroy handles DELETE /api/v1/healthcare/appointments/:id
+// Destroy handles DELETE /api/v1/appointments/:id
 func (ctrl *AppointmentController) Destroy(c *gin.Context) {
 	id := c.Param("id")
 	if err := ctrl.DB.Delete(&models.Appointment{}, id).Error; err != nil {
@@ -100,6 +103,47 @@ func (ctrl *AppointmentController) Destroy(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Appointment deleted"})
+}
+
+// Update handles PUT /api/v1/appointments/:id
+// Supports reschedule and/or status change.
+func (ctrl *AppointmentController) Update(c *gin.Context) {
+	id := c.Param("id")
+	var appointment models.Appointment
+	if err := ctrl.DB.First(&appointment, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Appointment not found"})
+		return
+	}
+
+	var req struct {
+		ScheduledTime string `json:"scheduled_time"`
+		Status        string `json:"status"`
+		DoctorID      uint   `json:"doctor_id"`
+		Notes         string `json:"notes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.ScheduledTime != "" {
+		appointment.ScheduledTime = req.ScheduledTime
+	}
+	if req.Status != "" {
+		appointment.Status = req.Status
+	}
+	if req.DoctorID != 0 {
+		appointment.DoctorID = req.DoctorID
+	}
+	if req.Notes != "" {
+		appointment.Notes = req.Notes
+	}
+
+	if err := ctrl.DB.Save(&appointment).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update appointment"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Appointment updated", "data": appointment})
 }
 
 // AddQueueEntry handles POST /api/v1/healthcare/appointments/:id/queue
